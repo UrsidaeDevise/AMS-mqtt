@@ -9,10 +9,11 @@ import time
 import datetime
 import logging
 #import amshan
-#from han import autodecoder
 from han import (
     common as han_type,
+    autodecoder,
     dlde,
+    obis_map,
     hdlc,
     meter_connection,
 )
@@ -46,19 +47,41 @@ def on_connect(client, userdata, flags, reason_code, properties):
 
 # The callback for when a PUBLISH message is received from the server.
 def on_message(client, userdata, msg):
-    print(msg.topic+" "+str(msg.payload))
-    #decoder = autodecoder.AutoDecoder()
-    decoded_frame = msg.payload.decode("utf-8")
-    print(decoded_frame)
+    #print(msg.topic+" "+str(msg.payload))
+    decoder = autodecoder.AutoDecoder()
+    #decoded_frame = msg.payload.decode("utf-8")
+    #print(decoded_frame)
     message = _try_read_meter_message(msg.payload)
     if message is not None:
-        print("Works")
+        if message.message_type == han_type.MeterMessageType.P1:
+            if message.is_valid:
+                _LOGGER.debug(
+                    "Got valid P1 message from topic %s: %s",
+                    msg.topic,
+                    msg.payload.hex(),
+                )
+                decoded_frame = decoder.decode_message(message) # TODO add try etc.. as in line 599: amshan/sensor.py (https://github.com/toreamun/amshan-homeassistant/blob/master/custom_components/amshan/sensor.py)
+                print(decoded_frame["meter_datetime"])
+                for key in decoded_frame:
+                    payload = {key: decoded_frame[key]}
+                    #print(payload)
+                    print(json.dumps(payload, default=str)) # TODO publish to MQTT
+                return message
+
+            _LOGGER.debug(
+                "Got invalid P1 message from topic %s: %s",
+                msg.topic,
+                msg.payload.hex(),
+            )
+
+            return None
 
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     print_hi('PyCharm')
+    #logging.basicConfig(level=logging.DEBUG)
     mqttc = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     mqttc.on_connect = on_connect
     mqttc.on_message = on_message
